@@ -5,8 +5,27 @@ import { verifyJWT } from '../middleware/auth.js';
 
 const router = express.Router();
 
-// Get feed (latest activities)
-router.get('/', verifyJWT, async (req, res) => {
+// Get feed (latest activities) - PUBLIC, no auth required but filters intelligently
+router.get('/', async (req, res) => {
+  try {
+    // Show public activities from all users
+    const activities = await Activity.find()
+      .populate('userId', 'name avatar')
+      .populate('challengeId', 'title')
+      .populate('comments.userId', 'name avatar')
+      .sort({ createdAt: -1 })
+      .limit(30)
+      .lean();
+    
+    res.json(activities);
+  } catch (err) {
+    console.error('Error fetching feed:', err.message);
+    res.status(500).json({ error: 'Failed to load feed', details: err.message });
+  }
+});
+
+// Get personalized feed (you + following) - REQUIRES LOGIN
+router.get('/personalized', verifyJWT, async (req, res) => {
   try {
     const currentUser = await User.findById(req.user._id, { following: 1 }).lean();
     const visibleUserIds = [req.user._id, ...(currentUser?.following || [])];
@@ -21,12 +40,13 @@ router.get('/', verifyJWT, async (req, res) => {
     
     res.json(activities);
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    console.error('Error fetching personalized feed:', err.message);
+    res.status(500).json({ error: 'Failed to load personalized feed', details: err.message });
   }
 });
 
-// Get user's activities by userId
-router.get('/user/:userId', verifyJWT, async (req, res) => {
+// Get user's activities by userId - PUBLIC, no auth required
+router.get('/user/:userId', async (req, res) => {
   try {
     const activities = await Activity.find({ userId: req.params.userId })
       .populate('userId', 'name avatar')
@@ -38,11 +58,12 @@ router.get('/user/:userId', verifyJWT, async (req, res) => {
     
     res.json(activities);
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    console.error('Error fetching user activities:', err.message);
+    res.status(500).json({ error: 'Failed to load user activities', details: err.message });
   }
 });
 
-// Like an activity
+// Like an activity - REQUIRES LOGIN
 router.post('/like', verifyJWT, async (req, res) => {
   try {
     const { activityId } = req.body;
@@ -65,7 +86,8 @@ router.post('/like', verifyJWT, async (req, res) => {
     await activity.save();
     res.json({ likes: activity.likes.length });
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    console.error('Error liking activity:', err.message);
+    res.status(500).json({ error: 'Failed to like activity', details: err.message });
   }
 });
 
@@ -91,7 +113,8 @@ router.post('/comment', verifyJWT, async (req, res) => {
     
     res.json(activity.comments);
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    console.error('Error adding comment:', err.message);
+    res.status(500).json({ error: 'Failed to add comment', details: err.message });
   }
 });
 

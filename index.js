@@ -128,14 +128,17 @@ if (!mongoUri || mongoUri.includes('<')) {
   });
 }
 
+// Apply database middleware to all routes
+app.use(requireDatabase);
+
 // Routes
 app.use('/api/auth', authRoutes);
 app.use('/api', mockDataRoutes);
-app.use('/api/challenges', requireDatabase, challengeRoutes);
-app.use('/api/checkin', requireDatabase, checkinRoutes);
-app.use('/api/leaderboard', requireDatabase, leaderboardRoutes);
-app.use('/api/feed', requireDatabase, feedRoutes);
-app.use('/api/users', requireDatabase, userRoutes);
+app.use('/api/challenges', challengeRoutes);
+app.use('/api/checkin', checkinRoutes);
+app.use('/api/leaderboard', leaderboardRoutes);
+app.use('/api/feed', feedRoutes);
+app.use('/api/users', userRoutes);
 
 // Health check
 app.get('/api/health', (req, res) => {

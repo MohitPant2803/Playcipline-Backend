@@ -165,7 +165,8 @@ router.post('/', verifyJWT, async (req, res) => {
     });
 
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    console.error('Error during check-in:', err.message);
+    res.status(500).json({ error: 'Failed to check in', details: err.message });
   }
 });
 
@@ -180,7 +181,8 @@ router.get('/today-status', verifyJWT, async (req, res) => {
     const checkedInIds = completions.map(c => c.userChallengeId.toString());
     res.json(checkedInIds);
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    console.error('Error fetching check-in status:', err.message);
+    res.status(500).json({ error: 'Failed to load check-in status', details: err.message });
   }
 });
 

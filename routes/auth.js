@@ -262,7 +262,8 @@ router.put('/me', requireDatabase, verifyJWT, async (req, res) => {
     const token = jwt.sign(payload, jwtSecret(), { expiresIn: '7d' });
     res.json({ user: payload, token });
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    console.error('Error updating user profile:', err.message);
+    res.status(500).json({ error: 'Failed to update profile', details: err.message });
   }
 });
 

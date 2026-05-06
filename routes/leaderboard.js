@@ -4,8 +4,9 @@ import { verifyJWT } from '../middleware/auth.js';
 
 const router = express.Router();
 
-// Get global leaderboard (weekly XP)
-router.get('/global', verifyJWT, async (req, res) => {
+// Get current user's rank in global leaderboard - REQUIRES LOGIN
+// MUST be before '/global' route to be matched first
+router.get('/global/my-rank', verifyJWT, async (req, res) => {
   try {
     const currentUserId = req.user._id;
     
@@ -42,7 +43,34 @@ router.get('/global', verifyJWT, async (req, res) => {
       currentUserRank: userRank
     });
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    console.error('Error fetching user rank:', err.message);
+    res.status(500).json({ error: 'Failed to load leaderboard', details: err.message });
+  }
+});
+
+// Get global leaderboard (weekly XP) - PUBLIC, no auth required
+// PLACED AFTER '/global/my-rank' so it doesn't interfere
+router.get('/global', async (req, res) => {
+  try {
+    // Get top 50 users by weeklyXP
+    const topUsers = await User.find({}, { name: 1, avatar: 1, weeklyXP: 1, level: 1, totalXP: 1 })
+      .sort({ weeklyXP: -1 })
+      .limit(50)
+      .lean();
+
+    // Add rank
+    const leaderboard = topUsers.map((user, index) => ({
+      ...user,
+      rank: index + 1
+    }));
+
+    res.json({
+      leaderboard: leaderboard,
+      currentUserRank: null
+    });
+  } catch (err) {
+    console.error('Error fetching global leaderboard:', err.message);
+    res.status(500).json({ error: 'Failed to load leaderboard', details: err.message });
   }
 });
 
@@ -71,7 +99,8 @@ router.get('/friends', verifyJWT, async (req, res) => {
       currentUserRank: userRank
     });
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    console.error('Error fetching friends leaderboard:', err.message);
+    res.status(500).json({ error: 'Failed to load friends leaderboard', details: err.message });
   }
 });
 

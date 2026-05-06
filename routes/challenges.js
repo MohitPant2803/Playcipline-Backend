@@ -5,17 +5,18 @@ import { verifyJWT } from '../middleware/auth.js';
 
 const router = express.Router();
 
-// Get all public challenges
-router.get('/', verifyJWT, async (req, res) => {
+// Get all public challenges - PUBLIC, no auth required
+router.get('/', async (req, res) => {
   try {
     const challenges = await Challenge.find({ isPublic: true }).lean();
     res.json(challenges);
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    console.error('Error fetching challenges:', err.message);
+    res.status(500).json({ error: 'Failed to load challenges', details: err.message });
   }
 });
 
-// Get user's active challenges
+// Get user's active challenges - REQUIRES LOGIN
 router.get('/my-challenges', verifyJWT, async (req, res) => {
   try {
     const userChallenges = await UserChallenge.find({ userId: req.user._id })
@@ -23,12 +24,13 @@ router.get('/my-challenges', verifyJWT, async (req, res) => {
       .lean();
     res.json(userChallenges);
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    console.error('Error fetching user challenges:', err.message);
+    res.status(500).json({ error: 'Failed to load user challenges', details: err.message });
   }
 });
 
-// Get specific user's completed challenges
-router.get('/user/:userId/completed', verifyJWT, async (req, res) => {
+// Get specific user's completed challenges - PUBLIC, no auth required
+router.get('/user/:userId/completed', async (req, res) => {
   try {
     const userChallenges = await UserChallenge.find({
       userId: req.params.userId,
@@ -38,11 +40,12 @@ router.get('/user/:userId/completed', verifyJWT, async (req, res) => {
       .lean();
     res.json(userChallenges);
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    console.error('Error fetching completed challenges:', err.message);
+    res.status(500).json({ error: 'Failed to load completed challenges', details: err.message });
   }
 });
 
-// Join a challenge
+// Join a challenge - REQUIRES LOGIN
 router.post('/:id/join', verifyJWT, async (req, res) => {
   try {
     const { mode } = req.body;
@@ -82,7 +85,8 @@ router.post('/:id/join', verifyJWT, async (req, res) => {
     
     res.status(201).json(userChallenge);
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    console.error('Error joining challenge:', err.message);
+    res.status(500).json({ error: 'Failed to join challenge', details: err.message });
   }
 });
 
