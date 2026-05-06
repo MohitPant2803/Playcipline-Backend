@@ -10,6 +10,11 @@ import { getLevelInfo } from '../utils/leveling.js';
 const router = express.Router();
 const isProduction = process.env.NODE_ENV === 'production';
 const jwtSecret = () => process.env.JWT_SECRET || 'dev-secret';
+const mongoUri = process.env.MONGODB_URI;
+
+// Connection caching for serverless environments
+const globalAny = global;
+if (!globalAny.__mongo_cache) globalAny.__mongo_cache = { promise: null };
 
 // Initialize passport strategy only once
 let strategyInitialized = false;
@@ -18,15 +23,49 @@ function isDatabaseConnected() {
   return mongoose.connection.readyState === 1;
 }
 
-function requireDatabase(req, res, next) {
-  if (isDatabaseConnected()) {
-    return next();
+async function ensureMongo() {
+  if (isDatabaseConnected()) return;
+  if (!mongoUri || mongoUri.includes('<')) return;
+
+  if (!globalAny.__mongo_cache.promise) {
+    globalAny.__mongo_cache.promise = mongoose
+      .connect(mongoUri, {
+        serverSelectionTimeoutMS: 5000,
+        socketTimeoutMS: 5000
+      })
+      .then((client) => {
+        console.log('MongoDB connected (cached)');
+        return client;
+      })
+      .catch((err) => {
+        console.error('MongoDB connection error:', err && err.message ? err.message : err);
+        globalAny.__mongo_cache.promise = null;
+        throw err;
+      });
   }
 
-  return res.status(503).json({
-    error: 'Database unavailable',
-    message: 'MongoDB is not connected. Check MONGODB_URI and make sure MongoDB is running.'
-  });
+  await globalAny.__mongo_cache.promise;
+}
+
+// Async middleware that ensures DB is connected before route handlers
+async function requireDatabase(req, res, next) {
+  try {
+    if (!isDatabaseConnected()) {
+      await ensureMongo();
+    }
+
+    if (isDatabaseConnected()) return next();
+
+    return res.status(503).json({
+      error: 'Database unavailable',
+      message: 'MongoDB is not connected. Check MONGODB_URI and make sure MongoDB is running.'
+    });
+  } catch (err) {
+    return res.status(503).json({
+      error: 'Database connection failed',
+      message: err && err.message ? err.message : String(err)
+    });
+  }
 }
 
 function ensureStrategyInitialized() {
