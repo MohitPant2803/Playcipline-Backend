@@ -89,16 +89,41 @@ async function requireDatabase(req, res, next) {
 
 function ensureStrategyInitialized() {
   if (!strategyInitialized) {
-    if (!process.env.GOOGLE_CLIENT_ID || !process.env.GOOGLE_CLIENT_SECRET) {
-      console.warn('Warning: GOOGLE_CLIENT_ID or GOOGLE_CLIENT_SECRET not set');
+    const clientId = process.env.GOOGLE_CLIENT_ID;
+    const clientSecret = process.env.GOOGLE_CLIENT_SECRET;
+    const callbackUrl = process.env.GOOGLE_CALLBACK_URL || 'http://localhost:5000/api/auth/google/callback';
+    
+    console.log('=== Google OAuth Configuration ===');
+    console.log('Client ID:', clientId ? `${clientId.substring(0, 10)}...` : 'NOT SET');
+    console.log('Client Secret:', clientSecret ? 'SET' : 'NOT SET');
+    console.log('Callback URL:', callbackUrl);
+    console.log('Frontend URL:', process.env.FRONTEND_URL || 'http://localhost:5173');
+    console.log('==================================');
+    
+    if (!clientId || !clientSecret) {
+      console.warn('⚠️ Warning: GOOGLE_CLIENT_ID or GOOGLE_CLIENT_SECRET not set');
     }
     
     passport.use(new GoogleStrategy({
-      clientID: process.env.GOOGLE_CLIENT_ID || '',
-      clientSecret: process.env.GOOGLE_CLIENT_SECRET || '',
-      callbackURL: process.env.GOOGLE_CALLBACK_URL || 'http://localhost:5000/api/auth/google/callback'
+      clientID: clientId || '',
+      clientSecret: clientSecret || '',
+      callbackURL: callbackUrl
     }, async (accessToken, refreshToken, profile, done) => {
       try {
+        // Extract email safely
+        const email = profile.emails?.[0]?.value;
+        
+        console.log('Google user authenticated:');
+        console.log('  - Display Name:', profile.displayName);
+        console.log('  - Email:', email);
+        console.log('  - Google ID:', profile.id);
+        
+        if (!email) {
+          const err = new Error('Email not provided by Google OAuth');
+          console.error(err.message);
+          return done(err, null);
+        }
+        
         // Ensure MongoDB is connected before processing the user
         await ensureMongo();
         
@@ -108,24 +133,29 @@ function ensureStrategyInitialized() {
 
         let user = await User.findOne({ googleId: profile.id });
         if (!user) {
+          console.log('Creating new user:', email);
           user = new User({
             googleId: profile.id,
             name: profile.displayName,
             googleName: profile.displayName,
-            email: profile.emails[0].value,
-            avatar: profile.photos[0]?.value || '',
-            googleAvatar: profile.photos[0]?.value || ''
+            email: email,
+            avatar: profile.photos?.[0]?.value || '',
+            googleAvatar: profile.photos?.[0]?.value || ''
           });
           await user.save();
+          console.log('User created successfully:', user._id);
         } else {
+          console.log('User already exists:', email);
           user.googleName = profile.displayName;
-          user.googleAvatar = profile.photos[0]?.value || user.googleAvatar || '';
+          user.googleAvatar = profile.photos?.[0]?.value || user.googleAvatar || '';
           if (!user.name) user.name = user.googleName;
           if (!user.avatar) user.avatar = user.googleAvatar;
           await user.save();
+          console.log('User updated successfully:', user._id);
         }
         return done(null, user);
       } catch (err) {
+        console.error('Passport strategy error:', err.message || err);
         return done(err, null);
       }
     }));
@@ -175,20 +205,57 @@ router.use((req, res, next) => {
 });
 
 // Google OAuth initiate
-router.get('/google', requireDatabase, passport.authenticate('google', {
+router.get('/google', passport.authenticate('google', {
   scope: ['profile', 'email'],
   prompt: 'select_account'
 }));
 
-// Google OAuth callback
-router.get('/google/callback', requireDatabase, passport.authenticate('google', { session: false }), (req, res) => {
-  const user = req.user;
-  const payload = serializeUserForClient(user);
-  const token = jwt.sign(payload, jwtSecret(), { expiresIn: '7d' });
-  
-  // Redirect to client with token as query param
-  const clientUrl = process.env.CLIENT_URL || 'http://localhost:5173';
-  res.redirect(`${clientUrl}/?token=${token}`);
+// Google OAuth callback with proper error handling
+router.get('/google/callback', requireDatabase, (req, res, next) => {
+  console.log('OAuth callback route hit');
+  passport.authenticate('google', { session: false }, (err, user, info) => {
+    console.log('Passport callback:');
+    console.log('  - Error:', err ? err.message : 'none');
+    console.log('  - User:', user ? user._id : 'none');
+    console.log('  - Info:', info);
+    
+    if (err) {
+      console.error('Passport authentication error:', err);
+      const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:5173';
+      return res.redirect(`${frontendUrl}/?error=${encodeURIComponent(err.message)}`);
+    }
+    
+    if (!user) {
+      console.error('No user returned from Google:', info);
+      const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:5173';
+      return res.redirect(`${frontendUrl}/?error=Authentication failed`);
+    }
+    
+    try {
+      const payload = serializeUserForClient(user);
+      const token = jwt.sign(payload, jwtSecret(), { expiresIn: '7d' });
+      
+      console.log('Token generated successfully, redirecting to:', process.env.FRONTEND_URL);
+      
+      // Use environment variable - works for both development and production
+      const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:5173';
+      res.redirect(`${frontendUrl}/?token=${token}`);
+    } catch (tokenErr) {
+      console.error('Token generation error:', tokenErr);
+      const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:5173';
+      res.redirect(`${frontendUrl}/?error=Token generation failed`);
+    }
+  })(req, res, next);
+});
+
+// Test endpoint to verify backend is working
+router.get('/test', (req, res) => {
+  res.json({ 
+    status: 'ok', 
+    message: 'Backend is working',
+    frontendUrl: process.env.FRONTEND_URL || 'http://localhost:5173',
+    time: new Date().toISOString()
+  });
 });
 
 // Local development login. This keeps the UI usable before Google OAuth is configured.

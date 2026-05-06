@@ -79,6 +79,20 @@ async function requireDatabase(req, res, next) {
     });
   }
 }
+app.use((req, res, next) => {
+  const origin = req.headers.origin;
+  // Use your logic or just allow your specific frontend
+  res.setHeader('Access-Control-Allow-Origin', origin || '*');
+  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS, PATCH');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+  res.setHeader('Access-Control-Allow-Credentials', 'true');
+
+  // Immediately respond to OPTIONS requests
+  if (req.method === 'OPTIONS') {
+    return res.status(200).end();
+  }
+  next();
+});
 
 // Middleware
 app.use(cors({
@@ -86,12 +100,35 @@ app.use(cors({
     // Allow requests with no origin (like mobile apps, cURL, Postman, etc.)
     if (!origin) return callback(null, true);
     
-    const allowedOrigins = (process.env.ALLOWED_ORIGINS || process.env.CLIENT_URL || 'http://localhost:5173').split(',');
+    // Build allowed origins from environment variables
+    let allowedOrigins = [];
     
-    if (allowedOrigins.includes(origin) || allowedOrigins[0] === '*') {
+    // Add frontend URL
+    if (process.env.FRONTEND_URL) {
+      allowedOrigins.push(process.env.FRONTEND_URL);
+    } else if (process.env.CLIENT_URL) {
+      allowedOrigins.push(process.env.CLIENT_URL);
+    }
+    
+    // Add default development URL if not already present
+    if (!allowedOrigins.includes('http://localhost:5173')) {
+      allowedOrigins.push('http://localhost:5173');
+    }
+    if (!allowedOrigins.includes('http://localhost:3000')) {
+      allowedOrigins.push('http://localhost:3000');
+    }
+    
+    // Parse additional origins if provided
+    if (process.env.ALLOWED_ORIGINS) {
+      const additionalOrigins = process.env.ALLOWED_ORIGINS.split(',').map(o => o.trim());
+      allowedOrigins = [...new Set([...allowedOrigins, ...additionalOrigins])]; // Remove duplicates
+    }
+    
+    if (allowedOrigins.includes(origin) || allowedOrigins.includes('*')) {
       callback(null, true);
     } else {
-      callback(null, true); // Allow all for now to debug
+      console.warn(`CORS blocked request from origin: ${origin}`);
+      callback(null, true); // Allow all for development debugging
     }
   },
   credentials: true,
