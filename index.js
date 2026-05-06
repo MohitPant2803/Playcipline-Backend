@@ -18,7 +18,6 @@ import userRoutes from './routes/users.js';
 
 const app = express();
 const isProduction = process.env.NODE_ENV === 'production';
-const mongoUri = process.env.MONGODB_URI;
 let databaseReady = false;
 
 function isDatabaseConnected() {
@@ -31,7 +30,13 @@ if (!globalAny.__mongo_cache) globalAny.__mongo_cache = { promise: null };
 
 async function ensureMongo() {
   if (isDatabaseConnected()) return;
-  if (!mongoUri || mongoUri.includes('<')) return;
+  
+  const mongoUri = process.env.MONGODB_URI;
+  
+  if (!mongoUri || mongoUri.includes('<')) {
+    console.warn('MongoDB URI not configured, skipping connection');
+    return;
+  }
 
   if (!globalAny.__mongo_cache.promise) {
     globalAny.__mongo_cache.promise = mongoose
@@ -113,8 +118,9 @@ if (!isServerless) {
 }
 
 // Connect to MongoDB lazily via ensureMongo() to support serverless environments.
+const mongoUri = process.env.MONGODB_URI;
 if (!mongoUri || mongoUri.includes('<')) {
-  console.warn('MongoDB not connected: set MONGODB_URI to enable database-backed features.');
+  console.warn('MongoDB not configured: set MONGODB_URI to enable database-backed features.');
 } else {
   // Attempt initial connection on startup
   ensureMongo().catch(err => {

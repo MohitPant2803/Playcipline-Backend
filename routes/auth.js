@@ -10,7 +10,6 @@ import { getLevelInfo } from '../utils/leveling.js';
 const router = express.Router();
 const isProduction = process.env.NODE_ENV === 'production';
 const jwtSecret = () => process.env.JWT_SECRET || 'dev-secret';
-const mongoUri = process.env.MONGODB_URI;
 
 // Connection caching for serverless environments
 const globalAny = global;
@@ -25,7 +24,27 @@ function isDatabaseConnected() {
 
 async function ensureMongo() {
   if (isDatabaseConnected()) return;
-  if (!mongoUri || mongoUri.includes('<')) return;
+  
+  const mongoUri = process.env.MONGODB_URI;
+  
+  console.log('Attempting MongoDB connection...');
+  console.log('mongoUri exists:', !!mongoUri);
+  console.log('mongoUri length:', mongoUri ? mongoUri.length : 0);
+  
+  if (!mongoUri) {
+    console.error('MONGODB_URI is not set in environment variables');
+    throw new Error('MONGODB_URI environment variable is missing');
+  }
+  
+  if (mongoUri.includes('<')) {
+    console.error('MONGODB_URI contains template brackets: ' + mongoUri);
+    throw new Error('MONGODB_URI is a template, not a valid connection string');
+  }
+  
+  if (!mongoUri.startsWith('mongodb://') && !mongoUri.startsWith('mongodb+srv://')) {
+    console.error('Invalid MONGODB_URI format:', mongoUri.substring(0, 50) + '...');
+    throw new Error('MONGODB_URI must start with mongodb:// or mongodb+srv://');
+  }
 
   if (!globalAny.__mongo_cache.promise) {
     globalAny.__mongo_cache.promise = mongoose
@@ -80,8 +99,11 @@ function ensureStrategyInitialized() {
       callbackURL: process.env.GOOGLE_CALLBACK_URL || 'http://localhost:5000/api/auth/google/callback'
     }, async (accessToken, refreshToken, profile, done) => {
       try {
+        // Ensure MongoDB is connected before processing the user
+        await ensureMongo();
+        
         if (!isDatabaseConnected()) {
-          return done(new Error('MongoDB is not connected'), null);
+          return done(new Error('MongoDB is not connected after connection attempt'), null);
         }
 
         let user = await User.findOne({ googleId: profile.id });
