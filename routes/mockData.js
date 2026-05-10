@@ -17,6 +17,8 @@ const demoUser = {
   weeklyXP: 120,
   level: getLevelInfo(120).level,
   globalStreak: 3,
+  longestStreak: 3,
+  lastActiveDate: null,
   badges: [],
   following: [],
   followers: []
@@ -36,6 +38,8 @@ const demoUsers = [
     weeklyXP: 90,
     level: getLevelInfo(90).level,
     globalStreak: 2,
+    longestStreak: 2,
+    lastActiveDate: null,
     badges: [],
     following: [],
     followers: []
@@ -52,6 +56,8 @@ const demoUsers = [
     weeklyXP: 150,
     level: getLevelInfo(340).level,
     globalStreak: 8,
+    longestStreak: 8,
+    lastActiveDate: null,
     badges: ['perfect-streak'],
     following: [],
     followers: []
@@ -87,6 +93,7 @@ const challenges = [
 
 const userChallenges = [];
 const checkedInToday = new Set();
+const MAX_ACTIVE_CHALLENGES = 3;
 const activities = [
   {
     _id: '300000000000000000000001',
@@ -132,6 +139,27 @@ router.use(useMockData);
 
 router.get('/challenges', verifyJWT, (req, res) => {
   res.json(challenges);
+});
+
+router.get('/challenges/enrollable', verifyJWT, (req, res) => {
+  const activeEnrollments = userChallenges.filter(item => (
+    item.userId === req.user._id && item.status === 'active'
+  ));
+  const enrollmentsByChallengeId = new Map(
+    activeEnrollments.map(enrollment => [enrollment.challengeId._id, enrollment])
+  );
+
+  res.json(challenges.map(challenge => {
+    const enrollment = enrollmentsByChallengeId.get(challenge._id);
+    return {
+      ...challenge,
+      isJoined: !!enrollment,
+      enrollmentId: enrollment?._id || null,
+      enrollmentMode: enrollment?.mode || null,
+      activeEnrollmentCount: activeEnrollments.length,
+      maxActiveChallenges: MAX_ACTIVE_CHALLENGES
+    };
+  }));
 });
 
 router.get('/users/search', verifyJWT, (req, res) => {
@@ -225,11 +253,20 @@ router.post('/challenges/:id/join', verifyJWT, (req, res) => {
   }
 
   const existing = userChallenges.find(item => (
-    item.challengeId._id === challenge._id && item.status === 'active'
+    item.userId === req.user._id &&
+    item.challengeId._id === challenge._id &&
+    item.status === 'active'
   ));
 
   if (existing) {
     return res.status(400).json({ error: 'Already have an active version of this challenge' });
+  }
+
+  const activeCount = userChallenges.filter(item => (
+    item.userId === req.user._id && item.status === 'active'
+  )).length;
+  if (activeCount >= MAX_ACTIVE_CHALLENGES) {
+    return res.status(400).json({ error: `You can only have ${MAX_ACTIVE_CHALLENGES} active challenges at a time` });
   }
 
   const requiredDays = mode === 'easy' ? Math.floor(challenge.duration * 0.8) : challenge.duration;
@@ -249,6 +286,77 @@ router.post('/challenges/:id/join', verifyJWT, (req, res) => {
 
   userChallenges.push(userChallenge);
   res.status(201).json(userChallenge);
+});
+
+router.post('/challenges/enroll', verifyJWT, (req, res) => {
+  const { challengeId, mode } = req.body;
+  const challenge = challenges.find(item => item._id === challengeId);
+
+  if (!challenge) {
+    return res.status(404).json({ error: 'Challenge not found' });
+  }
+
+  if (!['easy', 'medium', 'hard'].includes(mode)) {
+    return res.status(400).json({ error: 'Invalid mode' });
+  }
+
+  const existing = userChallenges.find(item => (
+    item.userId === req.user._id &&
+    item.challengeId._id === challenge._id &&
+    item.status === 'active'
+  ));
+
+  if (existing) {
+    return res.status(400).json({ error: 'Already have an active version of this challenge' });
+  }
+
+  const activeCount = userChallenges.filter(item => (
+    item.userId === req.user._id && item.status === 'active'
+  )).length;
+  if (activeCount >= MAX_ACTIVE_CHALLENGES) {
+    return res.status(400).json({ error: `You can only have ${MAX_ACTIVE_CHALLENGES} active challenges at a time` });
+  }
+
+  const requiredDays = mode === 'easy' ? Math.floor(challenge.duration * 0.8) : challenge.duration;
+  const userChallenge = {
+    _id: `20000000000000000000000${userChallenges.length + 1}`,
+    userId: req.user._id,
+    challengeId: challenge,
+    mode,
+    startDate: new Date().toISOString(),
+    completedDays: 0,
+    requiredDays,
+    currentStreak: 0,
+    longestStreak: 0,
+    status: 'active',
+    createdAt: new Date().toISOString()
+  };
+
+  userChallenges.push(userChallenge);
+  res.status(201).json(userChallenge);
+});
+
+router.delete('/challenges/enroll/:userChallengeId', verifyJWT, (req, res) => {
+  const userChallenge = userChallenges.find(item => item._id === req.params.userChallengeId);
+
+  if (!userChallenge) {
+    return res.status(404).json({ error: 'Enrollment not found' });
+  }
+
+  if (userChallenge.userId !== req.user._id) {
+    return res.status(403).json({ error: 'Unauthorized' });
+  }
+
+  if (userChallenge.status === 'completed') {
+    return res.status(400).json({ error: 'Completed challenges cannot be de-enrolled' });
+  }
+
+  if (userChallenge.status !== 'active') {
+    return res.status(400).json({ error: 'This challenge is no longer active' });
+  }
+
+  userChallenge.status = 'abandoned';
+  res.json({ success: true, userChallenge });
 });
 
 router.get('/checkin/today-status', verifyJWT, (req, res) => {
@@ -294,7 +402,20 @@ router.post('/checkin', verifyJWT, (req, res) => {
   demoUser.totalXP += xpEarned;
   demoUser.weeklyXP += xpEarned;
   demoUser.level = getLevelInfo(demoUser.totalXP).level;
-  demoUser.globalStreak += 1;
+  const todayStr = new Date().toISOString().slice(0, 10);
+  const yesterday = new Date();
+  yesterday.setDate(yesterday.getDate() - 1);
+  const yesterdayStr = yesterday.toISOString().slice(0, 10);
+  const lastActiveDateStr = demoUser.lastActiveDate
+    ? new Date(demoUser.lastActiveDate).toISOString().slice(0, 10)
+    : null;
+  if (lastActiveDateStr === yesterdayStr) {
+    demoUser.globalStreak += 1;
+  } else if (lastActiveDateStr !== todayStr) {
+    demoUser.globalStreak = 1;
+  }
+  demoUser.longestStreak = Math.max(demoUser.longestStreak || 0, demoUser.globalStreak || 0);
+  demoUser.lastActiveDate = new Date().toISOString();
 
   res.json({
     xpEarned,
@@ -303,7 +424,8 @@ router.post('/checkin', verifyJWT, (req, res) => {
     status: userChallenge.status,
     totalXP: demoUser.totalXP,
     level: demoUser.level,
-    globalStreak: demoUser.globalStreak
+    globalStreak: demoUser.globalStreak,
+    longestStreak: demoUser.longestStreak
   });
 });
 

@@ -124,13 +124,16 @@ router.post('/', verifyJWT, async (req, res) => {
     user.weeklyXP += xpEarned;
     user.level = getLevelInfo(user.totalXP).level;
 
-    // Global streak
+    // User-level streak: one completed task can extend the user's daily streak.
     const lastActiveDateStr = user.lastActiveDate
       ? user.lastActiveDate.toISOString().slice(0, 10)
       : null;
-    if (lastActiveDateStr !== todayStr) {
-      user.globalStreak++;
+    if (lastActiveDateStr === yesterdayStr) {
+      user.globalStreak = (user.globalStreak || 0) + 1;
+    } else if (lastActiveDateStr !== todayStr) {
+      user.globalStreak = 1;
     }
+    user.longestStreak = Math.max(user.longestStreak || 0, user.globalStreak || 0);
     user.lastActiveDate = new Date();
     await user.save();
 
@@ -161,7 +164,8 @@ router.post('/', verifyJWT, async (req, res) => {
       status: userChallenge.status,
       totalXP: user.totalXP,
       level: user.level,
-      globalStreak: user.globalStreak
+      globalStreak: user.globalStreak,
+      longestStreak: user.longestStreak
     });
 
   } catch (err) {

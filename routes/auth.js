@@ -190,10 +190,12 @@ function serializeUserForClient(user) {
     email: user.email,
     avatar: user.avatar || user.googleAvatar,
     location: user.location,
+    bio: user.bio || '',
     totalXP: user.totalXP || 0,
     weeklyXP: user.weeklyXP || 0,
     level: levelInfo.level,
     globalStreak: user.globalStreak || 0,
+    longestStreak: user.longestStreak || 0,
     badges: user.badges || [],
     followerCount: user.followers?.length || 0,
     followingCount: user.following?.length || 0
@@ -272,10 +274,12 @@ router.post('/dev-login', (req, res) => {
     email: 'demo@streakify.local',
     avatar: '',
     location: '',
+    bio: '',
     totalXP: 120,
     weeklyXP: 120,
     level: getLevelInfo(120).level,
     globalStreak: 3,
+    longestStreak: 3,
     badges: [],
     followerCount: 0,
     followingCount: 0
@@ -315,7 +319,8 @@ router.put('/me', requireDatabase, verifyJWT, async (req, res) => {
   const allowedUpdates = {
     name: String(req.body.name || '').trim(),
     avatar: String(req.body.avatar || '').trim(),
-    location: String(req.body.location || '').trim()
+    location: String(req.body.location || '').trim(),
+    bio: String(req.body.bio || '').trim()
   };
 
   try {
@@ -327,6 +332,7 @@ router.put('/me', requireDatabase, verifyJWT, async (req, res) => {
     user.name = allowedUpdates.name || user.googleName || user.name;
     user.avatar = allowedUpdates.avatar || user.googleAvatar || user.avatar;
     user.location = allowedUpdates.location;
+    user.bio = allowedUpdates.bio;
     await user.save();
 
     const payload = serializeUserForClient(user);
