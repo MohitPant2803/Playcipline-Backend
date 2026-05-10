@@ -15,6 +15,7 @@ const userSchema = new mongoose.Schema({
   globalStreak: { type: Number, default: 0 },
   longestStreak: { type: Number, default: 0 },
   lastActiveDate: Date,
+  lastWeeklyReset: { type: Date, default: () => new Date() },
   badges: [{ type: String }],
   following: [{ type: mongoose.Schema.Types.ObjectId, ref: 'User' }],
   followers: [{ type: mongoose.Schema.Types.ObjectId, ref: 'User' }],

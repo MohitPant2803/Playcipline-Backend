@@ -1,6 +1,7 @@
 import express from 'express';
 import User from '../models/User.js';
 import { verifyJWT } from '../middleware/auth.js';
+import { getWeekStart, shouldResetWeekly } from '../utils/weeklyReset.js';
 
 const router = express.Router();
 
@@ -104,11 +105,79 @@ router.get('/friends', verifyJWT, async (req, res) => {
   }
 });
 
-// Reset weekly XP (cron job)
+// Reset weekly XP for all users (admin/scheduled task)
+// Can be called via cron job or admin panel
+router.post('/reset-weekly', async (req, res) => {
+  try {
+    const currentWeekStart = getWeekStart();
+    
+    // Update all users' weekly XP to 0 and set lastWeeklyReset to current week start
+    const result = await User.updateMany(
+      {},
+      { 
+        $set: { 
+          weeklyXP: 0,
+          lastWeeklyReset: currentWeekStart
+        }
+      }
+    );
+
+    console.log(`Weekly leaderboard reset: ${result.modifiedCount} users updated`);
+    
+    res.json({ 
+      message: 'Weekly XP reset for all users',
+      usersReset: result.modifiedCount,
+      resetTime: currentWeekStart
+    });
+  } catch (err) {
+    console.error('Error resetting weekly leaderboard:', err.message);
+    res.status(500).json({ error: 'Failed to reset weekly leaderboard', details: err.message });
+  }
+});
+
+// Check if reset is needed and perform it
+router.post('/check-and-reset', async (req, res) => {
+  try {
+    const users = await User.find({}, { _id: 1, lastWeeklyReset: 1 }).lean();
+    let usersNeedingReset = 0;
+
+    for (const user of users) {
+      if (shouldResetWeekly(user.lastWeeklyReset)) {
+        usersNeedingReset++;
+      }
+    }
+
+    if (usersNeedingReset > 0) {
+      const currentWeekStart = getWeekStart();
+      await User.updateMany(
+        { lastWeeklyReset: { $lt: currentWeekStart } },
+        { 
+          $set: { 
+            weeklyXP: 0,
+            lastWeeklyReset: currentWeekStart
+          }
+        }
+      );
+      console.log(`Weekly reset check: ${usersNeedingReset} users reset`);
+    }
+
+    res.json({ 
+      message: usersNeedingReset > 0 ? 'Weekly reset performed' : 'No reset needed',
+      usersReset: usersNeedingReset
+    });
+  } catch (err) {
+    console.error('Error in check-and-reset:', err.message);
+    res.status(500).json({ error: 'Failed to check and reset', details: err.message });
+  }
+});
+
+// Get reset endpoint (legacy support)
 router.get('/reset', async (req, res) => {
   try {
-    await User.updateMany({}, { $set: { weeklyXP: 0 } });
-    res.json({ message: 'Weekly XP reset for all users' });
+    const currentWeekStart = getWeekStart();
+    
+    const result = await User.updateMany({}, { $set: { weeklyXP: 0, lastWeeklyReset: currentWeekStart } });
+    res.json({ message: 'Weekly XP reset for all users', usersReset: result.modifiedCount });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }

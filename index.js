@@ -15,6 +15,7 @@ import leaderboardRoutes from './routes/leaderboard.js';
 import feedRoutes from './routes/feed.js';
 import mockDataRoutes from './routes/mockData.js';
 import userRoutes from './routes/users.js';
+import { initializeJobs, stopJobs } from './jobs/scheduler.js';
 
 const app = express();
 const isProduction = process.env.NODE_ENV === 'production';
@@ -177,6 +178,15 @@ app.use('/api/leaderboard', leaderboardRoutes);
 app.use('/api/feed', feedRoutes);
 app.use('/api/users', userRoutes);
 
+// Initialize scheduled jobs (for non-serverless environments)
+if (!process.env.VERCEL) {
+  try {
+    initializeJobs();
+  } catch (err) {
+    console.error('Failed to initialize scheduled jobs:', err.message);
+  }
+}
+
 // Health check
 app.get('/api/health', (req, res) => {
   res.json({
@@ -199,6 +209,25 @@ if (!process.env.VERCEL) {
     }
 
     throw err;
+  });
+
+  // Graceful shutdown
+  process.on('SIGTERM', () => {
+    console.log('SIGTERM received, shutting down gracefully...');
+    stopJobs();
+    server.close(() => {
+      console.log('Server closed');
+      process.exit(0);
+    });
+  });
+
+  process.on('SIGINT', () => {
+    console.log('SIGINT received, shutting down gracefully...');
+    stopJobs();
+    server.close(() => {
+      console.log('Server closed');
+      process.exit(0);
+    });
   });
 }
 
