@@ -1,6 +1,6 @@
 import express from 'express';
 import User from '../models/User.js';
-import { verifyJWT } from '../middleware/auth.js';
+import { optionalJWT, verifyJWT } from '../middleware/auth.js';
 
 const router = express.Router();
 
@@ -39,7 +39,7 @@ router.get('/:id', async (req, res) => {
 
   try {
     const user = await User.findById(userId)
-      .select('name email avatar location totalXP weeklyXP level globalStreak badges followers createdAt')
+      .select('name email avatar location totalXP weeklyXP level globalStreak badges followers following createdAt')
       .lean();
 
     if (!user) {
@@ -48,7 +48,8 @@ router.get('/:id', async (req, res) => {
 
     res.json({
       ...user,
-      followerCount: user.followers?.length || 0
+      followerCount: user.followers?.length || 0,
+      followingCount: user.following?.length || 0
     });
   } catch (err) {
     console.error('Error fetching user profile:', err.message);
@@ -145,7 +146,7 @@ router.delete('/:id/follow', verifyJWT, async (req, res) => {
   }
 });
 
-router.get('/:id/followers', async (req, res) => {
+router.get('/:id/followers', optionalJWT, async (req, res) => {
   const userId = req.params.id;
   const currentUserId = req.user?._id; // Optional - only if authenticated
 
@@ -162,7 +163,8 @@ router.get('/:id/followers', async (req, res) => {
       const followingIds = new Set((currentUser?.following || []).map(id => id.toString()));
       followers = followers.map(follower => ({
         ...follower,
-        isFollowing: followingIds.has(follower._id.toString())
+        isFollowing: followingIds.has(follower._id.toString()),
+        isCurrentUser: follower._id.toString() === currentUserId
       }));
     }
 
@@ -173,7 +175,7 @@ router.get('/:id/followers', async (req, res) => {
   }
 });
 
-router.get('/:id/following', async (req, res) => {
+router.get('/:id/following', optionalJWT, async (req, res) => {
   const userId = req.params.id;
   const currentUserId = req.user?._id; // Optional - only if authenticated
 
@@ -190,7 +192,8 @@ router.get('/:id/following', async (req, res) => {
       const followingIds = new Set((currentUser?.following || []).map(id => id.toString()));
       following = following.map(followedUser => ({
         ...followedUser,
-        isFollowing: followingIds.has(followedUser._id.toString())
+        isFollowing: followingIds.has(followedUser._id.toString()),
+        isCurrentUser: followedUser._id.toString() === currentUserId
       }));
     }
 

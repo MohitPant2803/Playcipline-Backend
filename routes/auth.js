@@ -194,7 +194,9 @@ function serializeUserForClient(user) {
     weeklyXP: user.weeklyXP || 0,
     level: levelInfo.level,
     globalStreak: user.globalStreak || 0,
-    badges: user.badges || []
+    badges: user.badges || [],
+    followerCount: user.followers?.length || 0,
+    followingCount: user.following?.length || 0
   };
 }
 
@@ -239,7 +241,7 @@ router.get('/google/callback', requireDatabase, (req, res, next) => {
       
       // Use environment variable - works for both development and production
       const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:5173';
-      res.redirect(`${frontendUrl}/?token=${token}`);
+      res.redirect(`${frontendUrl}/dashboard?token=${token}`);
     } catch (tokenErr) {
       console.error('Token generation error:', tokenErr);
       const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:5173';
@@ -274,7 +276,9 @@ router.post('/dev-login', (req, res) => {
     weeklyXP: 120,
     level: getLevelInfo(120).level,
     globalStreak: 3,
-    badges: []
+    badges: [],
+    followerCount: 0,
+    followingCount: 0
   };
 
   const token = jwt.sign(user, jwtSecret(), { expiresIn: '7d' });
