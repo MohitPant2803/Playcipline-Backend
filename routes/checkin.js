@@ -10,13 +10,24 @@ import { getLevelInfo } from '../utils/leveling.js';
 const router = express.Router();
 
 // Helper function to compute today's date string
+// Reset happens at 12:01 AM, so before that, it's still "yesterday"
 function getTodayStr() {
-  return new Date().toISOString().slice(0, 10);
+  const now = new Date();
+  let dateToUse = new Date(now);
+  
+  // If we're before 12:01 AM, use yesterday's date
+  if (now.getHours() === 0 && now.getMinutes() < 1) {
+    dateToUse.setDate(dateToUse.getDate() - 1);
+  }
+  
+  return dateToUse.toISOString().slice(0, 10);
 }
 
-// Helper function to get yesterday's date string
+// Helper function to get yesterday's date string (relative to getTodayStr logic)
 function getYesterdayStr() {
-  const yesterday = new Date();
+  const today = getTodayStr();
+  const todayDate = new Date(today + 'T00:00:00Z');
+  const yesterday = new Date(todayDate);
   yesterday.setDate(yesterday.getDate() - 1);
   return yesterday.toISOString().slice(0, 10);
 }
@@ -161,6 +172,7 @@ router.post('/', verifyJWT, async (req, res) => {
       xpEarned,
       currentStreak: userChallenge.currentStreak,
       completedDays: userChallenge.completedDays,
+      longestStreakChallenge: userChallenge.longestStreak,
       status: userChallenge.status,
       totalXP: user.totalXP,
       level: user.level,
