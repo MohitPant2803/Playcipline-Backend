@@ -39,7 +39,7 @@ router.get('/:id', async (req, res) => {
 
   try {
     const user = await User.findById(userId)
-      .select('name email avatar location bio totalXP weeklyXP level globalStreak longestStreak badges followers following createdAt')
+      .select('name email avatar location bio totalXP weeklyXP level globalStreak longestStreak badges followers following createdAt lastActiveDate')
       .lean();
 
     if (!user) {
@@ -80,6 +80,7 @@ router.get('/profile/me', verifyJWT, async (req, res) => {
       level: user.level,
       globalStreak: user.globalStreak,
       longestStreak: user.longestStreak,
+      lastActiveDate: user.lastActiveDate,
       badges: user.badges,
       followers: user.followers?.length || 0,
       following: user.following?.length || 0

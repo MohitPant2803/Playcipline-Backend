@@ -227,6 +227,11 @@ router.get('/challenges/my-challenges', verifyJWT, (req, res) => {
   res.json(userChallenges);
 });
 
+router.get('/challenges/user/:userId/active', (req, res) => {
+  const active = userChallenges.filter(c => c.userId === req.params.userId && c.status === 'active');
+  res.json(active);
+});
+
 router.put('/auth/me', verifyJWT, (req, res) => {
   const currentUser = demoUsers.find(user => user._id === req.user._id) || demoUser;
 
@@ -425,7 +430,8 @@ router.post('/checkin', verifyJWT, (req, res) => {
     totalXP: demoUser.totalXP,
     level: demoUser.level,
     globalStreak: demoUser.globalStreak,
-    longestStreak: demoUser.longestStreak
+    longestStreak: demoUser.longestStreak,
+    lastActiveDate: demoUser.lastActiveDate
   });
 });
 

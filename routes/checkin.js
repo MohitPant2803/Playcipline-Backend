@@ -35,11 +35,10 @@ function getYesterdayStr() {
 // Helper function to award badges
 function awardBadge(user, userChallenge, challenge) {
   const badges = [];
-  if (challenge.duration === 7) badges.push('7-day');
-  if (challenge.duration === 21) badges.push('21-day');
+  badges.push(`${challenge.duration}-day`);
   if (userChallenge.mode === 'hard') badges.push('hard-mode');
   if (userChallenge.currentStreak === challenge.duration) badges.push('perfect-streak');
-  user.badges = [...new Set([...user.badges, ...badges])];
+  user.badges = [...new Set([...(user.badges || []), ...badges])];
 }
 
 // Check-in endpoint
@@ -177,7 +176,8 @@ router.post('/', verifyJWT, async (req, res) => {
       totalXP: user.totalXP,
       level: user.level,
       globalStreak: user.globalStreak,
-      longestStreak: user.longestStreak
+      longestStreak: user.longestStreak,
+      lastActiveDate: user.lastActiveDate
     });
 
   } catch (err) {
