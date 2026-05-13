@@ -131,7 +131,7 @@ async function enrollInChallenge({ userId, challengeId, mode }) {
     throw err;
   }
 
-  const durationMap = { easy: Math.floor(challenge.duration * 0.8), medium: challenge.duration, hard: challenge.duration };
+  const durationMap = { easy: Math.floor(challenge.duration * 0.6), medium: Math.floor(challenge.duration * 0.8), hard: challenge.duration };
   const userChallenge = new UserChallenge({
     userId,
     challengeId,

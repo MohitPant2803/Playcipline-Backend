@@ -95,11 +95,25 @@ router.post('/', verifyJWT, async (req, res) => {
     // Step 7: Update lastCheckIn
     userChallenge.lastCheckIn = new Date();
 
-    // Step 8: Check for hard mode failure (missed days)
-    const daysSinceStart = Math.floor((Date.now() - userChallenge.startDate.getTime()) / 86400000);
-    const expectedDays = daysSinceStart + 1;
-    if (userChallenge.mode === 'hard' && userChallenge.completedDays < expectedDays) {
-      userChallenge.status = 'failed';
+    // Step 8: Check for failures (missed days or mathematically impossible)
+    const challenge = await Challenge.findById(userChallenge.challengeId);
+    const startStr = userChallenge.startDate.toISOString().slice(0, 10);
+    const start = new Date(startStr + 'T00:00:00Z');
+    const todayDate = new Date(todayStr + 'T00:00:00Z');
+    const daysSinceStart = Math.floor((todayDate - start) / 86400000);
+    
+    const remainingDays = Math.max(0, challenge.duration - daysSinceStart - 1);
+
+    if (userChallenge.mode === 'hard') {
+      const expectedDays = daysSinceStart + 1;
+      if (userChallenge.completedDays < expectedDays) {
+        userChallenge.status = 'failed';
+      }
+    } else {
+      // If even checking in every remaining day won't meet the requirement, fail them.
+      if (userChallenge.completedDays + remainingDays < userChallenge.requiredDays) {
+        userChallenge.status = 'failed';
+      }
     }
 
     // Step 9: Check for completion
@@ -110,7 +124,6 @@ router.post('/', verifyJWT, async (req, res) => {
       xpEarned += BONUS_MAP[userChallenge.mode];
 
       // Award badges
-      const challenge = await Challenge.findById(userChallenge.challengeId);
       const user = await User.findById(userId);
       awardBadge(user, userChallenge, challenge);
       await user.save();
