@@ -2,8 +2,10 @@ import mongoose from 'mongoose';
 
 const activitySchema = new mongoose.Schema({
   userId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
-  type: { type: String, enum: ['checkin', 'completed_challenge', 'badge_earned'], required: true },
+  type: { type: String, enum: ['checkin', 'completed_challenge', 'badge_earned', 'post'], required: true },
   challengeId: { type: mongoose.Schema.Types.ObjectId, ref: 'Challenge' },
+  text: String,
+  image: String,
   meta: mongoose.Schema.Types.Mixed,
   likes: [{ type: mongoose.Schema.Types.ObjectId, ref: 'User' }],
   comments: [{

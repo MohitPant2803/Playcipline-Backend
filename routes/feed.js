@@ -118,4 +118,117 @@ router.post('/comment', verifyJWT, async (req, res) => {
   }
 });
 
+// Add a post
+router.post('/post', verifyJWT, async (req, res) => {
+  try {
+    const { text, challengeId, image } = req.body;
+    const userId = req.user._id;
+
+    const newActivity = new Activity({
+      userId,
+      type: 'post',
+      text,
+      image,
+      meta: { text, image },
+      challengeId: challengeId || undefined,
+      likes: [],
+      comments: []
+    });
+
+    await newActivity.save();
+
+    const populatedActivity = await Activity.findById(newActivity._id)
+      .populate('userId', 'name avatar')
+      .populate('challengeId', 'title');
+
+    res.status(201).json(populatedActivity);
+  } catch (err) {
+    console.error('Error creating post:', err.message);
+    res.status(500).json({ error: 'Failed to create post', details: err.message });
+  }
+});
+
+// Edit a post
+router.put('/post/:id', verifyJWT, async (req, res) => {
+  try {
+    const { text } = req.body;
+    const activity = await Activity.findById(req.params.id);
+    
+    if (!activity) {
+      return res.status(404).json({ error: 'Post not found' });
+    }
+    
+    if (activity.userId.toString() !== req.user._id.toString()) {
+      return res.status(403).json({ error: 'Unauthorized' });
+    }
+
+    activity.text = text;
+    if (!activity.meta) activity.meta = {};
+    activity.meta.text = text;
+    activity.markModified('meta');
+    
+    await activity.save();
+    
+    const populatedActivity = await Activity.findById(activity._id)
+      .populate('userId', 'name avatar')
+      .populate('challengeId', 'title')
+      .populate('comments.userId', 'name avatar');
+
+    res.json(populatedActivity);
+  } catch (err) {
+    console.error('Error editing post:', err.message);
+    res.status(500).json({ error: 'Failed to edit post', details: err.message });
+  }
+});
+
+// Delete a post
+router.delete('/post/:id', verifyJWT, async (req, res) => {
+  try {
+    const activity = await Activity.findById(req.params.id);
+    
+    if (!activity) {
+      return res.status(404).json({ error: 'Post not found' });
+    }
+    
+    if (activity.userId.toString() !== req.user._id.toString()) {
+      return res.status(403).json({ error: 'Unauthorized' });
+    }
+
+    await Activity.findByIdAndDelete(req.params.id);
+    res.json({ success: true });
+  } catch (err) {
+    console.error('Error deleting post:', err.message);
+    res.status(500).json({ error: 'Failed to delete post', details: err.message });
+  }
+});
+
+// Delete a comment
+router.delete('/post/:activityId/comment/:commentId', verifyJWT, async (req, res) => {
+  try {
+    const activity = await Activity.findById(req.params.activityId);
+    
+    if (!activity) {
+      return res.status(404).json({ error: 'Activity not found' });
+    }
+
+    const comment = activity.comments.id(req.params.commentId);
+    
+    if (!comment) {
+      return res.status(404).json({ error: 'Comment not found' });
+    }
+
+    if (comment.userId.toString() !== req.user._id.toString() && activity.userId.toString() !== req.user._id.toString()) {
+      return res.status(403).json({ error: 'Unauthorized to delete this comment' });
+    }
+
+    activity.comments.pull({ _id: req.params.commentId });
+    await activity.save();
+
+    res.json({ success: true });
+  } catch (err) {
+    console.error('Error deleting comment:', err.message);
+    res.status(500).json({ error: 'Failed to delete comment', details: err.message });
+  }
+});
+
 export default router;
