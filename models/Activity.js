@@ -6,6 +6,7 @@ const activitySchema = new mongoose.Schema({
   challengeId: { type: mongoose.Schema.Types.ObjectId, ref: 'Challenge' },
   text: String,
   image: String,
+  visibility: { type: String, enum: ['personal', 'friends', 'global'], default: 'global' },
   meta: mongoose.Schema.Types.Mixed,
   likes: [{ type: mongoose.Schema.Types.ObjectId, ref: 'User' }],
   comments: [{

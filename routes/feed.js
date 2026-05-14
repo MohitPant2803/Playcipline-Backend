@@ -1,6 +1,7 @@
 import express from 'express';
 import Activity from '../models/Activity.js';
 import User from '../models/User.js';
+import jwt from 'jsonwebtoken';
 import { verifyJWT } from '../middleware/auth.js';
 
 const router = express.Router();
@@ -9,7 +10,12 @@ const router = express.Router();
 router.get('/', async (req, res) => {
   try {
     // Show public activities from all users
-    const activities = await Activity.find()
+    const activities = await Activity.find({
+      $or: [
+        { visibility: 'global' },
+        { visibility: { $exists: false } }
+      ]
+    })
       .populate('userId', 'name avatar')
       .populate('challengeId', 'title')
       .populate('comments.userId', 'name avatar')
@@ -30,7 +36,13 @@ router.get('/personalized', verifyJWT, async (req, res) => {
     const currentUser = await User.findById(req.user._id, { following: 1 }).lean();
     const visibleUserIds = [req.user._id, ...(currentUser?.following || [])];
 
-    const activities = await Activity.find({ userId: { $in: visibleUserIds } })
+    const activities = await Activity.find({ 
+      userId: { $in: visibleUserIds },
+      $or: [
+        { visibility: { $in: ['friends', 'global'] } },
+        { visibility: { $exists: false } }
+      ]
+    })
       .populate('userId', 'name avatar')
       .populate('challengeId', 'title')
       .populate('comments.userId', 'name avatar')
@@ -48,7 +60,32 @@ router.get('/personalized', verifyJWT, async (req, res) => {
 // Get user's activities by userId - PUBLIC, no auth required
 router.get('/user/:userId', async (req, res) => {
   try {
-    const activities = await Activity.find({ userId: req.params.userId })
+    let visibilityFilter = ['global'];
+    
+    const authHeader = req.headers.authorization;
+    if (authHeader && authHeader.startsWith('Bearer ')) {
+      const token = authHeader.split(' ')[1];
+      try {
+        const decoded = jwt.verify(token, process.env.JWT_SECRET || 'dev-secret');
+        const currentUser = await User.findById(decoded.id || decoded._id).lean();
+        
+        if (currentUser) {
+          if (currentUser._id.toString() === req.params.userId) {
+            visibilityFilter = ['personal', 'friends', 'global'];
+          } else if (currentUser.following && currentUser.following.some(id => id.toString() === req.params.userId)) {
+            visibilityFilter = ['friends', 'global'];
+          }
+        }
+      } catch (e) {}
+    }
+
+    const activities = await Activity.find({ 
+      userId: req.params.userId,
+      $or: [
+        { visibility: { $in: visibilityFilter } },
+        { visibility: { $exists: false } }
+      ]
+    })
       .populate('userId', 'name avatar')
       .populate('challengeId', 'title')
       .populate('comments.userId', 'name avatar')
@@ -121,7 +158,7 @@ router.post('/comment', verifyJWT, async (req, res) => {
 // Add a post
 router.post('/post', verifyJWT, async (req, res) => {
   try {
-    const { text, challengeId, image } = req.body;
+    const { text, challengeId, image, visibility } = req.body;
     const userId = req.user._id;
 
     const newActivity = new Activity({
@@ -131,6 +168,7 @@ router.post('/post', verifyJWT, async (req, res) => {
       image,
       meta: { text, image },
       challengeId: challengeId || undefined,
+      visibility: visibility || 'global',
       likes: [],
       comments: []
     });
@@ -151,7 +189,7 @@ router.post('/post', verifyJWT, async (req, res) => {
 // Edit a post
 router.put('/post/:id', verifyJWT, async (req, res) => {
   try {
-    const { text } = req.body;
+    const { text, visibility } = req.body;
     const activity = await Activity.findById(req.params.id);
     
     if (!activity) {
@@ -162,10 +200,16 @@ router.put('/post/:id', verifyJWT, async (req, res) => {
       return res.status(403).json({ error: 'Unauthorized' });
     }
 
-    activity.text = text;
-    if (!activity.meta) activity.meta = {};
-    activity.meta.text = text;
-    activity.markModified('meta');
+    if (text !== undefined) {
+      activity.text = text;
+      if (!activity.meta) activity.meta = {};
+      activity.meta.text = text;
+      activity.markModified('meta');
+    }
+
+    if (visibility !== undefined) {
+      activity.visibility = visibility;
+    }
     
     await activity.save();
     
