@@ -121,7 +121,7 @@ router.post('/like', verifyJWT, async (req, res) => {
     }
 
     await activity.save();
-    res.json({ likes: activity.likes.length });
+    res.json({ likesCount: activity.likes.length, likes: activity.likes });
   } catch (err) {
     console.error('Error liking activity:', err.message);
     res.status(500).json({ error: 'Failed to like activity', details: err.message });
