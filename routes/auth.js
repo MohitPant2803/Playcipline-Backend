@@ -213,6 +213,10 @@ router.get('/google', (req, res, next) => {
   // Detect mobile/Capacitor OAuth requests safely by extracting the redirect_uri 
   const targetUrl = req.query.redirect_uri || 'web';
   
+  console.log('\n--- OAUTH INITIATION ---');
+  console.log('1. Raw req.query.redirect_uri:', req.query.redirect_uri);
+  console.log('2. Target State to send to Google:', targetUrl);
+
   passport.authenticate('google', {
     scope: ['profile', 'email'],
     prompt: 'select_account',
@@ -222,7 +226,10 @@ router.get('/google', (req, res, next) => {
 
 // Google OAuth callback with proper error handling
 router.get('/google/callback', requireDatabase, (req, res, next) => {
-  console.log('OAuth callback route hit');
+  console.log('\n--- OAUTH CALLBACK ---');
+  console.log('3. Raw callback req.query:', req.query);
+  console.log('4. Received state parameter from Google:', req.query.state);
+
   passport.authenticate('google', { session: false }, (err, user, info) => {
     console.log('Passport callback:');
     console.log('  - Error:', err ? err.message : 'none');
@@ -250,7 +257,10 @@ router.get('/google/callback', requireDatabase, (req, res, next) => {
       // Use environment variable - works for both development and production
       const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:5173';
 
+      console.log('5. Evaluating state for redirect:', req.query.state);
+
       if (req.query.state === 'com.playcipline.app://auth') {
+        console.log('6. MATCH FOUND! Target is Capacitor App.');
         /*
          * Mobile deep-link redirect flow:
          * Capacitor native apps open OAuth in an external system browser (Chrome).
@@ -261,6 +271,7 @@ router.get('/google/callback', requireDatabase, (req, res, next) => {
         console.log('Token generated successfully, redirecting to mobile app via deep link');
         res.redirect(`com.playcipline.app://auth?token=${token}`);
       } else {
+        console.log(`6. MATCH FAILED! State was '${req.query.state}'. Target is Web.`);
         /*
          * Web redirect flow:
          * Standard web browsers effortlessly follow standard HTTP/HTTPS redirects.
