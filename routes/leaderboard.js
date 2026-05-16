@@ -183,4 +183,26 @@ router.get('/reset', async (req, res) => {
   }
 });
 
+// Hard reset all users to level 0 and 0 XP (For development/admin purposes)
+router.post('/hard-reset-all', async (req, res) => {
+  try {
+    const result = await User.updateMany(
+      {},
+      { 
+        $set: { 
+          totalXP: 0,
+          weeklyXP: 0,
+          level: 0,
+          globalStreak: 0,
+          longestStreak: 0
+        }
+      }
+    );
+    res.json({ message: 'All users have been reset to level 0', usersReset: result.modifiedCount });
+  } catch (err) {
+    console.error('Error resetting users:', err.message);
+    res.status(500).json({ error: 'Failed to reset users', details: err.message });
+  }
+});
+
 export default router;

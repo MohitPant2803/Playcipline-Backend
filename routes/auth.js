@@ -209,10 +209,16 @@ router.use((req, res, next) => {
 });
 
 // Google OAuth initiate
-router.get('/google', passport.authenticate('google', {
-  scope: ['profile', 'email'],
-  prompt: 'select_account'
-}));
+router.get('/google', (req, res, next) => {
+  // Detect mobile/Capacitor OAuth requests safely by extracting the redirect_uri 
+  const targetUrl = req.query.redirect_uri || 'web';
+  
+  passport.authenticate('google', {
+    scope: ['profile', 'email'],
+    prompt: 'select_account',
+    state: targetUrl // Pass the destination through Google's state parameter
+  })(req, res, next);
+});
 
 // Google OAuth callback with proper error handling
 router.get('/google/callback', requireDatabase, (req, res, next) => {
@@ -226,28 +232,49 @@ router.get('/google/callback', requireDatabase, (req, res, next) => {
     if (err) {
       console.error('Passport authentication error:', err);
       const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:5173';
-      return res.redirect(`${frontendUrl}/?error=${encodeURIComponent(err.message)}`);
+      const errorUrl = req.query.state === 'com.playcipline.app://auth' ? 'com.playcipline.app://auth' : `${frontendUrl}/`;
+      return res.redirect(`${errorUrl}?error=${encodeURIComponent(err.message)}`);
     }
     
     if (!user) {
       console.error('No user returned from Google:', info);
       const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:5173';
-      return res.redirect(`${frontendUrl}/?error=Authentication failed`);
+      const errorUrl = req.query.state === 'com.playcipline.app://auth' ? 'com.playcipline.app://auth' : `${frontendUrl}/`;
+      return res.redirect(`${errorUrl}?error=Authentication failed`);
     }
     
     try {
       const payload = serializeUserForClient(user);
       const token = jwt.sign(payload, jwtSecret(), { expiresIn: '7d' });
       
-      console.log('Token generated successfully, redirecting to:', process.env.FRONTEND_URL);
-      
       // Use environment variable - works for both development and production
       const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:5173';
-      res.redirect(`${frontendUrl}/dashboard?token=${token}`);
+
+      if (req.query.state === 'com.playcipline.app://auth') {
+        /*
+         * Mobile deep-link redirect flow:
+         * Capacitor native apps open OAuth in an external system browser (Chrome).
+         * To return the token to the native app securely, we redirect to the custom URI scheme.
+         * Android OS intercepts this URI and wakes up the Capacitor app, passing the token in the URL.
+         * This prevents the external browser from halting the flow once authentication finishes.
+         */
+        console.log('Token generated successfully, redirecting to mobile app via deep link');
+        res.redirect(`com.playcipline.app://auth?token=${token}`);
+      } else {
+        /*
+         * Web redirect flow:
+         * Standard web browsers effortlessly follow standard HTTP/HTTPS redirects.
+         * This differs from Android because the browser already shares context with the React app.
+         * Redirects normally to the frontend dashboard where the token is extracted from the URL.
+         */
+        console.log('Token generated successfully, redirecting to web frontend:', frontendUrl);
+        res.redirect(`${frontendUrl}/dashboard?token=${token}`);
+      }
     } catch (tokenErr) {
       console.error('Token generation error:', tokenErr);
       const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:5173';
-      res.redirect(`${frontendUrl}/?error=Token generation failed`);
+      const errorUrl = req.query.state === 'com.playcipline.app://auth' ? 'com.playcipline.app://auth' : `${frontendUrl}/`;
+      res.redirect(`${errorUrl}?error=Token generation failed`);
     }
   })(req, res, next);
 });
